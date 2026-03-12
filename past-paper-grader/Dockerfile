@@ -1,19 +1,24 @@
-FROM oven/bun:1
-
+FROM oven/bun:1 AS base
 WORKDIR /app
 
 # Install dependencies
+FROM base AS deps
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# Copy source code
+# Build the Vite frontend  
+FROM base AS builder
+COPY --from=deps /app/node_modules node_modules
 COPY . .
-
-# Build the Vite frontend
 RUN bun run build
 
-# Expose the port that the app runs on
+# Production image
+FROM base
+COPY --from=deps /app/node_modules node_modules
+COPY --from=builder /app/dist dist
+COPY src src
+COPY package.json bun.lock ./
+
 EXPOSE 3000
 
-# Start the application
 CMD ["bun", "src/server/index.ts"]

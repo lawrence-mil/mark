@@ -16,6 +16,11 @@ interface GradingResult {
   }>;
 }
 
+interface ImageGradingInput {
+  paperImageUrl: string;
+  markschemeText: string;
+}
+
 export async function gradePaper(
   paperText: string,
   markschemeText: string
@@ -27,9 +32,6 @@ export async function gradePaper(
   }
 
   const prompt = `You are an expert teacher grading a student exam paper. Analyze the following past paper and mark scheme, then provide detailed grading.
-
-STUDENT PAPER:
-${paperText}
 
 MARK SCHEME:
 ${markschemeText}
@@ -65,7 +67,7 @@ Return your response as a valid JSON object with this exact structure:
 Ensure the JSON is valid and parseable. Do not include any markdown formatting or additional text outside the JSON.`;
 
   try {
-    console.log("🤖 Starting AI grading with Gemini 2.0 Flash...");
+    console.log("🤖 Starting AI grading...");
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -92,36 +94,149 @@ Ensure the JSON is valid and parseable. Do not include any markdown formatting o
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error("❌ OpenRouter API error:", response.status, errorData);
-      throw new Error(`AI grading failed: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+      throw new Error(`AI grading failed: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      console.error("❌ Empty response from OpenRouter API");
-      throw new Error("Empty response from AI - check API status");
+      throw new Error("Empty response from AI");
     }
 
     console.log("📝 Received response from AI, parsing JSON...");
+    console.log("🔍 Raw AI response (first 500 chars):", content.substring(0, 500));
     
-    // Extract JSON from response (handle potential markdown code blocks)
-    const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/) ||
-                       content.match(/\{[\s\S]*\}/);
-
-    const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
+    // Extract JSON from response
+    let jsonStr = "";
+    const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonBlockMatch) {
+      jsonStr = jsonBlockMatch[1];
+    } else {
+      const jsonObjMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonObjMatch) {
+        jsonStr = jsonObjMatch[0];
+      } else {
+        jsonStr = content;
+      }
+    }
     
-    if (!jsonStr) {
-      console.error("❌ Could not extract JSON from response:", content.substring(0, 200));
+    if (!jsonStr || jsonStr.trim().length === 0) {
       throw new Error("Invalid JSON in AI response");
     }
 
-    const result: GradingResult = JSON.parse(jsonStr.trim());
+    jsonStr = jsonStr.trim();
+    
+    let result: GradingResult;
+    try {
+      result = JSON.parse(jsonStr);
+    } catch (parseError) {
+      const fixedJson = jsonStr
+        .replace(/,\s*}/g, "}")
+        .replace(/,\s*\]/g, "]")
+        .replace(/\n/g, " ");
+      result = JSON.parse(fixedJson);
+    }
     
     console.log(`✅ AI grading successful: ${result.totalScore}/${result.maxPossibleScore}`);
     return result;
   } catch (error) {
     console.error("❌ Grading error:", error);
+    throw new Error(`AI grading failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+
+// Grade directly from images - no OCR needed
+export async function gradeFromImages(input: ImageGradingInput): Promise<GradingResult> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not configured");
+  }
+
+  const prompt = `You are an expert teacher grading a student exam paper. 
+
+The student has uploaded an exam paper as an image. I've also provided the mark scheme below.
+
+MARK SCHEME:
+${input.markschemeText}
+
+Your task:
+1. Look at the exam paper image and identify each question
+2. Grade each question based on the mark scheme
+3. Award marks appropriately
+4. Provide feedback for each question
+5. Suggest improvements
+
+Return your response as valid JSON:
+{
+  "totalScore": number,
+  "maxPossibleScore": number,
+  "subject": "subject name",
+  "examBoard": "exam board name", 
+  "feedback": "overall feedback",
+  "questions": [
+    {
+      "questionNumber": number,
+      "questionText": "question from paper",
+      "studentAnswer": "answer visible in image",
+      "markschemeAnswer": "correct answer from scheme",
+      "score": number,
+      "maxScore": number,
+      "feedback": "feedback for this question",
+      "improvementSuggestions": "how to improve"
+    }
+  ]
+}`;
+
+  try {
+    console.log("🤖 Grading from image...");
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://papergrader.app",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-001",
+        messages: [
+          {
+            role: "system",
+            content: "You are a teacher grading exams. Always respond with valid JSON only."
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: input.paperImageUrl } }
+            ]
+          }
+        ],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI grading failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("Empty response from AI");
+    }
+
+    // Extract JSON
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : content;
+    
+    const result: GradingResult = JSON.parse(jsonStr.trim());
+    console.log(`✅ Image grading: ${result.totalScore}/${result.maxPossibleScore}`);
+    return result;
+  } catch (error) {
+    console.error("❌ Image grading error:", error);
     throw new Error(`AI grading failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }

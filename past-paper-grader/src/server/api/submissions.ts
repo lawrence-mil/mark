@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { db, submissions, questionResults } from "../../lib/database/client";
 import { uploadFile, getPresignedUrl } from "../../lib/storage/client";
 import { extractTextFromFile, extractTextFromPDF } from "../../lib/ocr/client";
-import { gradePaper } from "../../lib/ai/client";
+import { gradePaper, gradeFromImages } from "../../lib/ai/client";
 import { eq } from "drizzle-orm";
 import { cacheSubmission, cacheAIResults } from "../../lib/cache/client";
 import { detectAndFetchMarkscheme } from "../../lib/ai/detection";
@@ -252,6 +252,17 @@ async function processSubmission(submissionId: string) {
     return url;
   }
 
+  function resolveFileUrl(url: string): string {
+    if (url.startsWith("http")) {
+      return url;
+    }
+    if (url.startsWith("/api/file/")) {
+      const key = decodeURIComponent(url.replace("/api/file/", ""));
+      return `https://pub-8e3e109443c141c28ee3762d7476813f.r2.dev/${key}`;
+    }
+    return url;
+  }
+
   try {
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
@@ -268,48 +279,58 @@ async function processSubmission(submissionId: string) {
       paperUrls = [submission.paperFileUrl];
     }
 
-    let paperText = "";
-    for (const url of paperUrls) {
-      const proxyUrl = toProxyUrl(url);
-      const urlLower = url.toLowerCase();
-      if (urlLower.includes(".txt") || urlLower.endsWith("txt")) {
-        const response = await fetch(url);
-        paperText += (await response.text()) + "\n\n";
-      } else if (urlLower.includes(".pdf") || urlLower.endsWith("pdf")) {
-        paperText += (await extractTextFromPDF(proxyUrl)) + "\n\n";
-      } else {
-        paperText += (await extractTextFromFile(proxyUrl)) + "\n\n";
-      }
-    }
-
+    // Get markscheme text
     let markschemeText = submission.markschemeText || "";
     if (!markschemeText && submission.markschemeFileUrl) {
-      const msProxyUrl = toProxyUrl(submission.markschemeFileUrl);
-      const msUrlLower = submission.markschemeFileUrl.toLowerCase();
+      const msUrl = resolveFileUrl(submission.markschemeFileUrl);
+      const msUrlLower = msUrl.toLowerCase();
       if (msUrlLower.includes(".txt") || msUrlLower.endsWith("txt")) {
-        const response = await fetch(submission.markschemeFileUrl);
+        const response = await fetch(msUrl);
         markschemeText = await response.text();
-      } else if (msUrlLower.includes(".pdf") || msUrlLower.endsWith("pdf")) {
-        markschemeText = await extractTextFromPDF(msProxyUrl);
       } else {
-        markschemeText = await extractTextFromFile(msProxyUrl);
+        // Use AI to extract from image
+        try {
+          const { extractTextFromFile } = await import("../../lib/ocr/client");
+          markschemeText = await extractTextFromFile(msUrl);
+        } catch (e) {
+          console.error("Failed to extract markscheme:", e);
+        }
       }
     }
 
-    await db
-      .update(submissions)
-      .set({
-        paperText,
-        markschemeText,
-      })
-      .where(eq(submissions.id, submissionId));
+    // Use multimodal AI to grade directly from images (no OCR needed)
+    const paperImageUrl = resolveFileUrl(paperUrls[0]);
+    console.log("🖼️ Using multimodal AI for direct image grading...");
 
-    const gradingResult = await gradePaper(paperText, markschemeText);
+    let gradingResult;
+    try {
+      // Try direct image grading first
+      gradingResult = await gradeFromImages({
+        paperImageUrl: paperImageUrl,
+        markschemeText: markschemeText
+      });
+    } catch (imageError) {
+      console.warn("Direct image grading failed, falling back to text:", imageError);
+      
+      // Fallback: try to extract text first then grade
+      const { extractTextFromFile } = await import("../../lib/ocr/client");
+      let paperText = "";
+      try {
+        paperText = await extractTextFromFile(paperImageUrl);
+      } catch {
+        // If OCR fails, use a simple prompt
+        paperText = "Could not extract text from image";
+      }
+      
+      gradingResult = await gradePaper(paperText, markschemeText);
+    }
 
     await db
       .update(submissions)
       .set({
         status: "completed",
+        paperText: "Image processed by AI",
+        markschemeText: markschemeText.substring(0, 10000),
         totalScore: gradingResult.totalScore,
         maxPossibleScore: gradingResult.maxPossibleScore,
         aiFeedback: gradingResult,

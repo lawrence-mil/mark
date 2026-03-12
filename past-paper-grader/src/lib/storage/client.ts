@@ -26,16 +26,10 @@ export async function uploadFile(file: File): Promise<{ url: string; key: string
     })
   );
 
-  const url = await getSignedUrl(
-    s3,
-    new GetObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    }),
-    { expiresIn: 604800 } // 7 days
-  );
+  // Use public URL instead of signed URL
+  const publicUrl = getPublicUrl(key);
 
-  return { url, key };
+  return { url: publicUrl, key };
 }
 
 export async function deleteFile(key: string): Promise<void> {
@@ -59,5 +53,6 @@ export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<st
 }
 
 export function getPublicUrl(key: string): string {
-  return `${process.env.R2_ENDPOINT}/${BUCKET_NAME}/${key}`;
+  // Use R2.dev public URL
+  return `https://pub-8e3e109443c141c28ee3762d7476813f.r2.dev/${key}`;
 }
