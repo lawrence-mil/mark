@@ -76,7 +76,7 @@ Ensure the JSON is valid and parseable. Do not include any markdown formatting o
         "HTTP-Referer": "https://papergrader.app",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-2024-11-20",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -200,7 +200,7 @@ Return your response as valid JSON:
         "HTTP-Referer": "https://papergrader.app",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-2024-11-20",
+        model: "openai/gpt-4o",
         messages: [
           {
             role: "system",
@@ -220,7 +220,9 @@ Return your response as valid JSON:
     });
 
     if (!response.ok) {
-      throw new Error(`AI grading failed: ${response.status}`);
+      const errorBody = await response.text();
+      console.error("❌ OpenRouter error response:", errorBody);
+      throw new Error(`AI grading failed: ${response.status} - ${errorBody}`);
     }
 
     const data = await response.json();

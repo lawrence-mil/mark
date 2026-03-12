@@ -43,7 +43,7 @@ Return as JSON:
       "HTTP-Referer": "https://papergrader.app",
     },
     body: JSON.stringify({
-        model: "openai/gpt-4o-2024-11-20",
+        model: "openai/gpt-4o",
       messages: [
         {
           role: "user",
