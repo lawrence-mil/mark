@@ -199,7 +199,7 @@ Return your response as valid JSON:
         "HTTP-Referer": "https://papergrader.app",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "google/gemini-2.0-flash-latest",
         messages: [
           {
             role: "system",
@@ -214,6 +214,7 @@ Return your response as valid JSON:
           }
         ],
         temperature: 0.2,
+        response_format: { type: "json_object" }
       }),
     });
 

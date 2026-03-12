@@ -345,12 +345,12 @@ async function processSubmission(submissionId: string) {
           submissionId,
           questionNumber: q.questionNumber,
           questionText: q.questionText,
-          studentAnswer: q.studentAnswer,
+          studentAnswer: q.studentAnswer || "No answer provided.",
           markschemeAnswer: q.markschemeAnswer,
           score: q.score,
           maxScore: q.maxScore,
-          feedback: q.feedback,
-          improvementSuggestions: q.improvementSuggestions,
+          feedback: q.feedback || "",
+          improvementSuggestions: q.improvementSuggestions || "",
         }))
       );
     }
