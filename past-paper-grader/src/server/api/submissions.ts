@@ -299,30 +299,36 @@ async function processSubmission(submissionId: string) {
     }
 
     // Use multimodal AI to grade directly from images (no OCR needed)
-    const paperImageUrl = resolveFileUrl(paperUrls[0]);
-    console.log("🖼️ Using multimodal AI for direct image grading...");
-
+    // But skip for PDFs - vision models don't support PDF input
+    const paperUrl = resolveFileUrl(paperUrls[0]);
+    const isPdf = paperUrl.toLowerCase().includes(".pdf") || paperUrls[0].toLowerCase().endsWith(".pdf");
+    
     let gradingResult;
-    try {
-      // Try direct image grading first
-      gradingResult = await gradeFromImages({
-        paperImageUrl: paperImageUrl,
-        markschemeText: markschemeText
-      });
-    } catch (imageError) {
-      console.warn("Direct image grading failed, falling back to text:", imageError);
-      
-      // Fallback: try to extract text first then grade
+    if (!isPdf) {
+      console.log("🖼️ Using multimodal AI for direct image grading...");
+      try {
+        gradingResult = await gradeFromImages({
+          paperImageUrl: paperUrl,
+          markschemeText: markschemeText
+        });
+      } catch (imageError) {
+        console.warn("Direct image grading failed, falling back to text:", imageError);
+        gradingResult = await gradeFromOCR(paperUrl, markschemeText);
+      }
+    } else {
+      console.log("📄 PDF detected - using OCR-based grading...");
+      gradingResult = await gradeFromOCR(paperUrl, markschemeText);
+    }
+
+    async function gradeFromOCR(paperImageUrl: string, markschemeText: string) {
       const { extractTextFromFile } = await import("../../lib/ocr/client");
       let paperText = "";
       try {
         paperText = await extractTextFromFile(paperImageUrl);
       } catch {
-        // If OCR fails, use a simple prompt
         paperText = "Could not extract text from image";
       }
-      
-      gradingResult = await gradePaper(paperText, markschemeText);
+      return await gradePaper(paperText, markschemeText);
     }
 
     await db
