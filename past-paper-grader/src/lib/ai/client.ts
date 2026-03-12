@@ -76,7 +76,7 @@ Ensure the JSON is valid and parseable. Do not include any markdown formatting o
         "HTTP-Referer": "https://papergrader.app",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
+        model: "openai/gpt-4o-2024-11-20",
         messages: [
           {
             role: "system",
@@ -88,6 +88,7 @@ Ensure the JSON is valid and parseable. Do not include any markdown formatting o
           }
         ],
         temperature: 0.2,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -199,7 +200,7 @@ Return your response as valid JSON:
         "HTTP-Referer": "https://papergrader.app",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-latest",
+        model: "openai/gpt-4o-2024-11-20",
         messages: [
           {
             role: "system",

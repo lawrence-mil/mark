@@ -43,7 +43,7 @@ Return as JSON:
       "HTTP-Referer": "https://papergrader.app",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.0-flash-001",
+        model: "openai/gpt-4o-2024-11-20",
       messages: [
         {
           role: "user",
