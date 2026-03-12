@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FileDropzone } from "../components/FileDropzone";
 import { uploadPaper, uploadMarkscheme, detectMarkscheme, triggerProcessing } from "../lib/api";
 import posthog from "posthog-js";
+import { useHaptics } from "../hooks/useHaptics";
 
 type Step = "paper" | "detecting" | "markscheme" | "submitting";
 
@@ -13,6 +14,7 @@ export function HomePage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paperName, setPaperName] = useState<string | null>(null);
+  const haptics = useHaptics();
 
   const handlePaperUpload = async (files: File[]) => {
     setUploading(true);
@@ -35,10 +37,12 @@ export function HomePage() {
             metadata: detectResult.metadata 
           });
           setStep("submitting");
+          haptics.success();
           await triggerProcessing(result.submissionId);
           navigate(`/${result.submissionId}`);
         } else {
           posthog.capture("markscheme_auto_detect_failed", { submissionId: result.submissionId });
+          haptics.warning();
           setStep("markscheme");
         }
       } catch (detectErr) {
@@ -49,6 +53,7 @@ export function HomePage() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Upload failed";
       setError(errorMessage);
+      haptics.error();
       posthog.capture("paper_upload_error", { error: errorMessage });
     } finally {
       setUploading(false);
@@ -64,11 +69,13 @@ export function HomePage() {
       await uploadMarkscheme(submissionId, file);
       posthog.capture("markscheme_manual_upload_success", { submissionId });
       setStep("submitting");
+      haptics.success();
       await triggerProcessing(submissionId);
       navigate(`/${submissionId}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Upload failed";
       setError(errorMessage);
+      haptics.error();
       posthog.capture("markscheme_manual_upload_error", { error: errorMessage });
       setStep("markscheme");
     } finally {

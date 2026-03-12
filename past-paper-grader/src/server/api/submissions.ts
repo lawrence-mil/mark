@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { db, submissions, questionResults } from "../../lib/database/client";
-import { uploadFile } from "../../lib/storage/client";
+import { uploadFile, getPresignedUrl } from "../../lib/storage/client";
 import { extractTextFromFile, extractTextFromPDF } from "../../lib/ocr/client";
 import { gradePaper } from "../../lib/ai/client";
 import { eq } from "drizzle-orm";
@@ -8,10 +8,41 @@ import { cacheSubmission, cacheAIResults } from "../../lib/cache/client";
 import { detectAndFetchMarkscheme } from "../../lib/ai/detection";
 
 export const submissionsRouter = new Elysia({ prefix: "/api" })
+  // Proxy file through server
+  .get("/file/:key", async ({ params, set }) => {
+    try {
+      const { key } = params;
+      // Decode the URL-encoded key
+      const decodedKey = decodeURIComponent(key);
+      const url = await getPresignedUrl(decodedKey);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        set.status = 404;
+        return { error: "File not found" };
+      }
+
+      const contentType = response.headers.get("content-type") || "application/octet-stream";
+      set.headers = {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=86400",
+      };
+
+      return response.body;
+    } catch (error) {
+      console.error("File proxy error:", error);
+      set.status = 500;
+      return { error: "Failed to fetch file" };
+    }
+  }, {
+    params: t.Object({
+      key: t.String(),
+    }),
+  })
   // Upload paper endpoint
   .post("/submit/paper", async ({ body, set }) => {
     try {
-      const { files } = body as any;
+      const files = body.files as unknown as File[];
       const fileArray = Array.isArray(files) ? files : [files];
 
       if (!files || fileArray.length === 0 || !fileArray[0]) {
@@ -19,15 +50,17 @@ export const submissionsRouter = new Elysia({ prefix: "/api" })
         return { error: "No files provided" };
       }
 
+      // Validate file types
       const validTypes = ["application/pdf", "image/png", "image/jpeg", "text/plain"];
       for (const file of fileArray) {
-        if (!validTypes.includes(file.type)) {
+        const fileType = file.type.split(";")[0]; // Remove charset from type
+        if (!validTypes.includes(fileType)) {
           set.status = 400;
-          return { error: `Invalid file type for ${file.name}. Supported: PDF, PNG, JPG, TXT` };
+          return { error: `Invalid file type: ${fileType}` };
         }
         if (file.size > 50 * 1024 * 1024) {
           set.status = 400;
-          return { error: `File ${file.name} too large. Maximum size is 50MB` };
+          return { error: `File too large: ${file.size} bytes (max 50MB)` };
         }
       }
 
@@ -67,6 +100,7 @@ export const submissionsRouter = new Elysia({ prefix: "/api" })
         return { error: "Submission not found" };
       }
 
+      // Parse paper URLs from submission
       let paperUrls: string[];
       try {
         paperUrls = JSON.parse(submission.paperFileUrl);
@@ -74,25 +108,44 @@ export const submissionsRouter = new Elysia({ prefix: "/api" })
         paperUrls = [submission.paperFileUrl];
       }
 
+      if (!paperUrls || paperUrls.length === 0) {
+        return { found: false, error: "No paper files found" };
+      }
+
+      console.log(`🔍 Attempting to auto-detect markscheme for submission ${submissionId}`);
       const result = await detectAndFetchMarkscheme(paperUrls);
-      
+
       if (result.found && result.text) {
+        // Save the detected markscheme
         await db
           .update(submissions)
           .set({
             markschemeText: result.text,
-            subject: result.metadata?.subject,
-            examBoard: result.metadata?.examBoard,
+            examBoard: result.metadata?.examBoard || undefined,
+            subject: result.metadata?.subject || undefined,
           })
           .where(eq(submissions.id, submissionId));
-          
-        return { found: true, metadata: result.metadata };
+
+        console.log(`✅ Markscheme auto-detected for ${submissionId}`);
+        return {
+          found: true,
+          metadata: result.metadata,
+          message: "Markscheme auto-detected and saved",
+        };
       }
 
-      return { found: false };
+      return {
+        found: false,
+        metadata: result.metadata,
+        message: "Could not auto-detect markscheme. Please upload manually.",
+      };
     } catch (error) {
       console.error("Detection error:", error);
-      return { found: false, error: "Detection failed" };
+      set.status = 500;
+      return {
+        found: false,
+        error: error instanceof Error ? error.message : "Detection failed",
+      };
     }
   }, {
     params: t.Object({
@@ -103,7 +156,8 @@ export const submissionsRouter = new Elysia({ prefix: "/api" })
   // Upload markscheme endpoint
   .post("/submit/markscheme", async ({ body, set }) => {
     try {
-      const { submissionId, file } = body as any;
+      const file = body.file as unknown as File;
+      const submissionId = body.submissionId as string;
 
       if (!submissionId) {
         set.status = 400;
@@ -180,6 +234,24 @@ export const submissionsRouter = new Elysia({ prefix: "/api" })
   });
 
 async function processSubmission(submissionId: string) {
+  function toProxyUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const keyParam = urlObj.searchParams.get("X-Amz-Key");
+      if (keyParam) {
+        return `/api/file/${encodeURIComponent(keyParam)}`;
+      }
+      const pathParts = urlObj.pathname.split("/");
+      const key = pathParts[pathParts.length - 1];
+      if (key) {
+        return `/api/file/${encodeURIComponent(decodeURIComponent(key))}`;
+      }
+    } catch (e) {
+      console.error("Failed to parse URL:", e);
+    }
+    return url;
+  }
+
   try {
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
@@ -198,25 +270,29 @@ async function processSubmission(submissionId: string) {
 
     let paperText = "";
     for (const url of paperUrls) {
-      if (url.endsWith(".txt")) {
+      const proxyUrl = toProxyUrl(url);
+      const urlLower = url.toLowerCase();
+      if (urlLower.includes(".txt") || urlLower.endsWith("txt")) {
         const response = await fetch(url);
         paperText += (await response.text()) + "\n\n";
-      } else if (url.endsWith(".pdf")) {
-        paperText += (await extractTextFromPDF(url)) + "\n\n";
+      } else if (urlLower.includes(".pdf") || urlLower.endsWith("pdf")) {
+        paperText += (await extractTextFromPDF(proxyUrl)) + "\n\n";
       } else {
-        paperText += (await extractTextFromFile(url)) + "\n\n";
+        paperText += (await extractTextFromFile(proxyUrl)) + "\n\n";
       }
     }
 
     let markschemeText = submission.markschemeText || "";
     if (!markschemeText && submission.markschemeFileUrl) {
-      if (submission.markschemeFileUrl.endsWith(".txt")) {
+      const msProxyUrl = toProxyUrl(submission.markschemeFileUrl);
+      const msUrlLower = submission.markschemeFileUrl.toLowerCase();
+      if (msUrlLower.includes(".txt") || msUrlLower.endsWith("txt")) {
         const response = await fetch(submission.markschemeFileUrl);
         markschemeText = await response.text();
-      } else if (submission.markschemeFileUrl.endsWith(".pdf")) {
-        markschemeText = await extractTextFromPDF(submission.markschemeFileUrl);
+      } else if (msUrlLower.includes(".pdf") || msUrlLower.endsWith("pdf")) {
+        markschemeText = await extractTextFromPDF(msProxyUrl);
       } else {
-        markschemeText = await extractTextFromFile(submission.markschemeFileUrl);
+        markschemeText = await extractTextFromFile(msProxyUrl);
       }
     }
 

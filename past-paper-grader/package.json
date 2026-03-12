@@ -33,9 +33,11 @@
     "@elysiajs/static": "^1.4.7",
     "@headlessui/react": "^2.2.9",
     "@mistralai/mistralai": "^1.15.1",
+    "@openauthjs/openauth": "^0.4.3",
     "@tailwindcss/vite": "^4.2.1",
     "@types/pg": "^8.18.0",
     "daisyui": "^5.5.19",
+    "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
     "elysia": "^1.4.27",
     "exa-js": "^2.8.0",
@@ -45,6 +47,8 @@
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",
     "redis": "^5.11.0",
-    "tailwindcss": "^4.2.1"
+    "resend": "^6.9.3",
+    "tailwindcss": "^4.2.1",
+    "web-haptics": "^0.0.6"
   }
 }

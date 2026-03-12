@@ -17,10 +17,6 @@ export const resultsRouter = new Elysia({ prefix: "/api" })
       // Get from database
       const submission = await db.query.submissions.findFirst({
         where: eq(submissions.id, submissionId),
-        with: {
-          // @ts-ignore - drizzle relations
-          questionResults: true,
-        },
       });
 
       if (!submission) {
@@ -28,13 +24,10 @@ export const resultsRouter = new Elysia({ prefix: "/api" })
         return { error: "Submission not found" };
       }
 
-      // Get question results if not loaded with relation
-      let questions = submission.questionResults;
-      if (!questions) {
-        questions = await db.query.questionResults.findMany({
-          where: eq(questionResults.submissionId, submissionId),
-        });
-      }
+      // Get question results
+      const questions = await db.query.questionResults.findMany({
+        where: eq(questionResults.submissionId, submissionId),
+      });
 
       const response = {
         id: submission.id,
@@ -46,7 +39,7 @@ export const resultsRouter = new Elysia({ prefix: "/api" })
         examBoard: submission.examBoard,
         paperDate: submission.paperDate,
         aiFeedback: submission.aiFeedback,
-        questions: questions?.map((q) => ({
+        questions: questions.map((q) => ({
           questionNumber: q.questionNumber,
           questionText: q.questionText,
           studentAnswer: q.studentAnswer,

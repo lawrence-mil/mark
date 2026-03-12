@@ -11,7 +11,7 @@ const s3 = new S3Client({
   },
 });
 
-const BUCKET_NAME = "past-papers";
+const BUCKET_NAME = process.env.R2_BUCKET_NAME || "past-papers";
 
 export async function uploadFile(file: File): Promise<{ url: string; key: string }> {
   const key = `${randomUUID()}_${Date.now()}_${file.name}`;

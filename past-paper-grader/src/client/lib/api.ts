@@ -53,3 +53,44 @@ export async function getResults(submissionId: string): Promise<SubmissionResult
   }
   return res.json();
 }
+
+export interface User {
+  id: string;
+  email: string;
+}
+
+export async function sendVerificationCode(email: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${BASE}/auth/send-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed to send code" }));
+    throw new Error(err.error || "Failed to send code");
+  }
+  return res.json();
+}
+
+export async function verifyCode(email: string, code: string): Promise<{ success: boolean; user: User }> {
+  const res = await fetch(`${BASE}/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Invalid code" }));
+    throw new Error(err.error || "Invalid code");
+  }
+  return res.json();
+}
+
+export async function getUser(): Promise<{ id: string; email: string } | null> {
+  const stored = localStorage.getItem("user");
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return null;
+  }
+}

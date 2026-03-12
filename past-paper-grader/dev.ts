@@ -1,4 +1,8 @@
 import { spawn } from "bun";
+import { config } from "dotenv";
+
+// Load .env file for development
+config();
 
 // Start the Elysia API server
 const server = spawn(["bun", "--watch", "src/server/index.ts"], {

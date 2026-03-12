@@ -1,5 +1,21 @@
 import { pgTable, uuid, timestamp, text, integer, varchar, date, jsonb } from "drizzle-orm/pg-core";
 
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const bugReports = pgTable("bug_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  email: varchar("email", { length: 255 }),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  status: varchar("status", { length: 20 }).default("open").$type<"open" | "in_progress" | "resolved" | "closed">(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
 export const submissions = pgTable("submissions", {
   id: uuid("id").primaryKey().defaultRandom(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

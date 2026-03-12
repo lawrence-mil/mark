@@ -4,6 +4,8 @@ import { staticPlugin } from "@elysiajs/static";
 import { submissionsRouter } from "./api/submissions";
 import { resultsRouter } from "./api/results";
 import { healthRouter } from "./api/health";
+import { authRouter } from "./api/auth";
+import { bugRouter } from "./api/bugs";
 
 const app = new Elysia()
   .use(cors())
@@ -11,6 +13,8 @@ const app = new Elysia()
   .use(submissionsRouter)
   .use(resultsRouter)
   .use(healthRouter)
+  .use(authRouter)
+  .use(bugRouter)
   // Serve static frontend files
   .use(staticPlugin({
     assets: "dist",

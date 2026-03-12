@@ -1,4 +1,5 @@
 import { useCallback, useState, type DragEvent } from "react";
+import { useHaptics } from "../hooks/useHaptics";
 
 interface FileDropzoneProps {
   onFiles?: (files: File[]) => void;
@@ -29,6 +30,7 @@ export function FileDropzone({
 }: FileDropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const haptics = useHaptics();
 
   const validateAndEmit = useCallback(
     (fileList: FileList | File[]) => {
@@ -38,6 +40,7 @@ export function FileDropzone({
       if (filesArray.length === 0) return;
       if (!multiple && filesArray.length > 1) {
         setError("Please upload only one file.");
+        haptics.error();
         return;
       }
 
@@ -46,22 +49,25 @@ export function FileDropzone({
       for (const file of filesArray) {
         if (!VALID_TYPES.includes(file.type)) {
           setError(`Invalid file type for ${file.name}. Supported: PDF, PNG, JPG, TXT`);
+          haptics.error();
           return;
         }
         if (file.size > 50 * 1024 * 1024) {
           setError(`File ${file.name} is too large. Maximum size is 50MB.`);
+          haptics.error();
           return;
         }
         validFiles.push(file);
       }
 
+      haptics.success();
       if (multiple && onFiles) {
         onFiles(validFiles);
       } else if (onFile) {
         onFile(validFiles[0]);
       }
     },
-    [multiple, onFiles, onFile]
+    [multiple, onFiles, onFile, haptics]
   );
 
   const handleDrop = useCallback(
@@ -69,16 +75,18 @@ export function FileDropzone({
       e.preventDefault();
       setDragOver(false);
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        haptics.light();
         validateAndEmit(e.dataTransfer.files);
       }
     },
-    [validateAndEmit]
+    [validateAndEmit, haptics]
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
     setDragOver(true);
-  }, []);
+    haptics.soft();
+  }, [haptics]);
 
   const handleDragLeave = useCallback(() => {
     setDragOver(false);
