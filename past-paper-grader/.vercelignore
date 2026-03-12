@@ -1,0 +1,13 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Deps
+node_modules
+
+# Platform configs
+.railway
+.claude
+.DS_Store
+.git

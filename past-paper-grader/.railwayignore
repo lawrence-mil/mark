@@ -1,0 +1,14 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Deps & build output
+node_modules
+dist
+
+# Platform configs
+.vercel
+.claude
+.DS_Store
+.git

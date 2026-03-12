@@ -1,0 +1,50 @@
+{
+  "name": "past-paper-grader",
+  "module": "src/server/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun dev.ts",
+    "build": "bunx vite build",
+    "start:api": "bun src/server/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "ship": "bun deploy.ts",
+    "deploy:backend": "railway up --detach",
+    "deploy:frontend": "vercel --prod",
+    "start": "bun src/server/index.ts"
+  },
+  "devDependencies": {
+    "@railway/cli": "^4.31.0",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "drizzle-kit": "^0.31.9",
+    "typescript": "^5",
+    "vercel": "^50.32.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1007.0",
+    "@aws-sdk/s3-request-presigner": "^3.1007.0",
+    "@elysiajs/cors": "^1.4.1",
+    "@elysiajs/static": "^1.4.7",
+    "@headlessui/react": "^2.2.9",
+    "@mistralai/mistralai": "^1.15.1",
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/pg": "^8.18.0",
+    "daisyui": "^5.5.19",
+    "drizzle-orm": "^0.45.1",
+    "elysia": "^1.4.27",
+    "exa-js": "^2.8.0",
+    "pg": "^8.20.0",
+    "posthog-js": "^1.360.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1",
+    "redis": "^5.11.0",
+    "tailwindcss": "^4.2.1"
+  }
+}
